@@ -15,10 +15,13 @@ my $prg_name = $0;
 $prg_name =~ s/.*\///;
 my $PID_dir="/tmp";
 
+our $max_start_wait = 1;
+
 @ISA = qw(Exporter);
 $VERSION = "0.0.1";
 %EXPORT_TAGS = (
-		all => [qw(PID_dir prg_name resolveHostname logger local_die startRun stopRun)]
+		all => [qw(PID_dir prg_name resolveHostname logger local_die startRun stopRun
+                   max_start_wait)]
 	       );
 
 # Add Everything in %EXPORT_TAGS to @EXPORT_OK
@@ -92,18 +95,14 @@ sub local_die {
   exit(1);
 };
 
+
 sub startRun {
   my $prg = shift || $0;
   $prg =~ s/.*\///;
   my $pidFile = "$PID_dir/$prg.pid";
+  my $counter = $max_start_wait;
 
-  my $counter = 1;
-  while ((-e $pidFile) and ($counter > 0)) {
-    logger(LOG_INFO, "File \"$pidFile\" in way, waiting ($counter).");
-    sleep 5;
-    $counter--;
-  };
-
+RETRY:
   if (-e $pidFile) {
     open(PID, "<$pidFile") or die "Can't read file \"$pidFile\"";
     my $pid = <PID>; chomp($pid);
@@ -116,10 +115,14 @@ sub startRun {
     };
 
     if ($found) {
-      my $msg = "We are already running as PID=$pid, terminating!";
+      logger(LOG_INFO, "File \"$pidFile\" in way, waiting ($counter).");
+      sleep 5;
+      $counter--;
+      goto RETRY if ($counter);
+
+      my $msg = "We are still running as PID=$pid, terminating!";
       logger(LOG_ERR, $msg);
       exit 1;
-      die $msg;
     }
 
     logger(LOG_INFO, "Overwriting orphaned PID file \"$pidFile\"");
